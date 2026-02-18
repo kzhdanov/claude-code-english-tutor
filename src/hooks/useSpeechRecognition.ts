@@ -10,7 +10,7 @@ interface UseSpeechRecognitionReturn {
   stopListening: () => void;
 }
 
-const SILENCE_DELAY = 2000; // ms of silence before auto-stop
+const SILENCE_DELAY = 1500; // ms of silence before auto-stop
 
 export function useSpeechRecognition(): UseSpeechRecognitionReturn {
   const [isListening, setIsListening] = useState(false);

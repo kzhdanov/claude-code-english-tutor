@@ -29,3 +29,9 @@ export interface NewsCategory {
   label: string;
   items: NewsItem[];
 }
+
+export interface EdgeVoice {
+  id: string;
+  name: string;
+  gender: string;
+}

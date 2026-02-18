@@ -79,10 +79,10 @@ export function useConversation() {
 
   // When TTS finishes speaking, go back to idle
   useEffect(() => {
-    if (status === "speaking" && !tts.isSpeaking) {
+    if (status === "speaking" && !tts.isSpeaking && !speech.isListening) {
       setStatus("idle");
     }
-  }, [status, tts.isSpeaking]);
+  }, [status, tts.isSpeaking, speech.isListening]);
 
   const startRecording = useCallback(() => {
     tts.stop();

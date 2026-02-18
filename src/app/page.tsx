@@ -110,7 +110,7 @@ export default function Home() {
           </p>
         </div>
       ) : (
-        <ConversationView messages={messages} />
+        <ConversationView messages={messages} status={status} />
       )}
 
       {/* Bottom controls */}
@@ -137,7 +137,7 @@ export default function Home() {
             : status === "processing"
               ? "Getting response..."
               : status === "speaking"
-                ? "Playing response..."
+                ? "Tap to interrupt"
                 : "Tap to speak"}
         </p>
       </div>

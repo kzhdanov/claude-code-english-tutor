@@ -1,91 +1,113 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
+import type { EdgeVoice } from "@/types";
 
-interface UseSpeechSynthesisReturn {
-  isSpeaking: boolean;
-  isSupported: boolean;
-  voices: SpeechSynthesisVoice[];
-  selectedVoice: SpeechSynthesisVoice | null;
-  setSelectedVoice: (voice: SpeechSynthesisVoice) => void;
-  speak: (text: string) => void;
-  stop: () => void;
+const EDGE_VOICES: EdgeVoice[] = [
+  { id: "en-US-AriaNeural", name: "Aria (US)", gender: "Female" },
+  { id: "en-US-JennyNeural", name: "Jenny (US)", gender: "Female" },
+  { id: "en-US-AvaNeural", name: "Ava (US)", gender: "Female" },
+  { id: "en-US-GuyNeural", name: "Guy (US)", gender: "Male" },
+  { id: "en-US-AndrewNeural", name: "Andrew (US)", gender: "Male" },
+  { id: "en-GB-SoniaNeural", name: "Sonia (UK)", gender: "Female" },
+  { id: "en-GB-RyanNeural", name: "Ryan (UK)", gender: "Male" },
+  { id: "en-AU-NatashaNeural", name: "Natasha (AU)", gender: "Female" },
+];
+
+function splitSentences(text: string): string[] {
+  const parts = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g);
+  if (!parts) return [text];
+  return parts.map((s) => s.trim()).filter(Boolean);
 }
 
-export function useSpeechSynthesis(): UseSpeechSynthesisReturn {
+export function useSpeechSynthesis() {
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [selectedVoice, setSelectedVoice] =
-    useState<SpeechSynthesisVoice | null>(null);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-
-  const [isSupported, setIsSupported] = useState(false);
-
-  useEffect(() => {
-    setIsSupported("speechSynthesis" in window);
-  }, []);
-
-  useEffect(() => {
-    if (!isSupported) return;
-
-    const loadVoices = () => {
-      const allVoices = window.speechSynthesis.getVoices();
-      // Filter to English voices only
-      const enVoices = allVoices.filter((v) => v.lang.startsWith("en"));
-      setVoices(enVoices);
-
-      // Pick a default: prefer a natural/premium voice
-      if (!selectedVoice && enVoices.length > 0) {
-        const preferred =
-          enVoices.find((v) => v.name === "Google US English") || enVoices[0];
-        setSelectedVoice(preferred);
-      }
-    };
-
-    loadVoices();
-    window.speechSynthesis.onvoiceschanged = loadVoices;
-
-    return () => {
-      window.speechSynthesis.onvoiceschanged = null;
-    };
-  }, [isSupported, selectedVoice]);
-
-  const speak = useCallback(
-    (text: string) => {
-      if (!isSupported) return;
-
-      window.speechSynthesis.cancel();
-
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = "en-US";
-      utterance.rate = 0.9;
-      utterance.pitch = 1;
-
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
-      }
-
-      utterance.onstart = () => setIsSpeaking(true);
-      utterance.onend = () => setIsSpeaking(false);
-      utterance.onerror = () => setIsSpeaking(false);
-
-      utteranceRef.current = utterance;
-      window.speechSynthesis.speak(utterance);
-    },
-    [isSupported, selectedVoice],
-  );
+  const [selectedVoice, setSelectedVoice] = useState<EdgeVoice>(EDGE_VOICES[0]);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const stoppedRef = useRef(false);
 
   const stop = useCallback(() => {
-    if (isSupported) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
+    stoppedRef.current = true;
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
     }
-  }, [isSupported]);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      if (audioRef.current.src) URL.revokeObjectURL(audioRef.current.src);
+      audioRef.current = null;
+    }
+    setIsSpeaking(false);
+  }, []);
+
+  const speak = useCallback(
+    async (text: string) => {
+      stop();
+      stoppedRef.current = false;
+      setIsSpeaking(true);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      const sentences = splitSentences(text);
+
+      // Fetch all sentences in parallel
+      const fetchPromises = sentences.map((sentence) =>
+        fetch("/api/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: sentence, voice: selectedVoice.id }),
+          signal: controller.signal,
+        }).then((res) => {
+          if (!res.ok) throw new Error(`TTS failed: ${res.status}`);
+          return res.blob();
+        }),
+      );
+
+      try {
+        // Play sentences sequentially as they become ready
+        for (let i = 0; i < fetchPromises.length; i++) {
+          if (stoppedRef.current) return;
+
+          const blob = await fetchPromises[i];
+          if (stoppedRef.current) return;
+
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          audioRef.current = audio;
+
+          await new Promise<void>((resolve, reject) => {
+            audio.onended = () => {
+              URL.revokeObjectURL(url);
+              audioRef.current = null;
+              resolve();
+            };
+            audio.onerror = () => {
+              URL.revokeObjectURL(url);
+              audioRef.current = null;
+              reject(new Error("Audio playback error"));
+            };
+            audio.play().catch(reject);
+          });
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name !== "AbortError") {
+          console.error("TTS error:", err);
+        }
+      } finally {
+        if (!stoppedRef.current) {
+          setIsSpeaking(false);
+        }
+      }
+    },
+    [selectedVoice, stop],
+  );
 
   return {
     isSpeaking,
-    isSupported,
-    voices,
+    isSupported: true,
+    voices: EDGE_VOICES,
     selectedVoice,
     setSelectedVoice,
     speak,

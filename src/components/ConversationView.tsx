@@ -2,14 +2,32 @@
 
 import { useEffect, useRef } from "react";
 import { MessageBubble } from "./MessageBubble";
-import type { Message } from "@/types";
+import type { Message, ConversationStatus } from "@/types";
 
-export function ConversationView({ messages }: { messages: Message[] }) {
+function TypingIndicator() {
+  return (
+    <div className="flex justify-start mb-3">
+      <div className="bg-gray-200 rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1 items-center">
+        <span className="w-2 h-2 bg-gray-500 rounded-full animate-bounce [animation-delay:0ms]" />
+        <span className="w-2 h-2 bg-gray-500 rounded-full animate-bounce [animation-delay:150ms]" />
+        <span className="w-2 h-2 bg-gray-500 rounded-full animate-bounce [animation-delay:300ms]" />
+      </div>
+    </div>
+  );
+}
+
+export function ConversationView({
+  messages,
+  status,
+}: {
+  messages: Message[];
+  status: ConversationStatus;
+}) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, status]);
 
   if (messages.length === 0) {
     return (
@@ -26,6 +44,7 @@ export function ConversationView({ messages }: { messages: Message[] }) {
       {messages.map((msg) => (
         <MessageBubble key={msg.id} message={msg} />
       ))}
+      {status === "processing" && <TypingIndicator />}
       <div ref={bottomRef} />
     </div>
   );

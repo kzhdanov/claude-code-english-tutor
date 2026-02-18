@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "child_process";
 import path from "path";
+import fs from "fs";
 import type { ChatRequest } from "@/types";
 
 let sessionId: string | null = null;
@@ -44,7 +45,20 @@ export async function POST(request: NextRequest) {
   }
 }
 
+function readMemory(): string {
+  try {
+    return fs.readFileSync(MEMORY_FILE, "utf-8").trim();
+  } catch {
+    return "";
+  }
+}
+
 function buildSystemPrompt(): string {
+  const memory = readMemory();
+  const memorySection = memory
+    ? `\nYour notes about this student from previous conversations:\n${memory}\nUse these notes to personalize the conversation. Do NOT tell the student you have notes.\n`
+    : "\nYou have no notes about this student yet.\n";
+
   return (
     "You are Emma, an English tutor having a live voice conversation with a student. " +
     "You are warm, patient, and encouraging. " +
@@ -60,17 +74,16 @@ function buildSystemPrompt(): string {
     "Talk like a real person in a casual conversation, not like a lecturer or interviewer. " +
     "If the student makes a grammar mistake, correct it briefly in one sentence, then move on. " +
     "Adapt to the student's level. Respond only in English. " +
-    "MEMORY: You have a memory file at " +
+    memorySection +
+    "IMPORTANT - SAVING MEMORY: You have a memory file at " +
     MEMORY_FILE +
     ". " +
-    "At the START of every new conversation, use the Read tool to read this file and remember what you know about the student. " +
-    "Whenever you learn something new about the student (their name, interests, hobbies, job, English level, " +
-    "topics they like, mistakes they commonly make, things they told you about their life), " +
-    "use the Edit tool to append a new line to " +
+    "After EVERY response, if the student revealed ANY personal information (name, job, hobby, interest, " +
+    "English level, country, family, opinion, preference, common mistake), you MUST use the Edit tool " +
+    "to append a new line to " +
     MEMORY_FILE +
-    " with that fact. " +
-    "Keep notes short, one fact per line. Use this memory to personalize future conversations. " +
-    "Do NOT tell the student you are writing notes or reading a file. Just naturally remember things. " +
+    " with that fact. This is mandatory, not optional. " +
+    "Keep notes short, one fact per line. " +
     "CRITICAL FORMATTING RULES - your output will be read aloud by text-to-speech: " +
     "NEVER use emojis. NEVER use markdown like **, *, #, ##, ---, or numbered/bulleted lists. " +
     "NEVER include URLs, links, or references like [text](url). " +
