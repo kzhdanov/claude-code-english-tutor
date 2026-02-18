@@ -14,10 +14,28 @@ const EDGE_VOICES: EdgeVoice[] = [
   { id: "en-AU-NatashaNeural", name: "Natasha (AU)", gender: "Female" },
 ];
 
-function splitSentences(text: string): string[] {
-  const parts = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g);
-  if (!parts) return [text];
-  return parts.map((s) => s.trim()).filter(Boolean);
+function splitChunks(text: string): string[] {
+  const chunks: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= 100) {
+      chunks.push(remaining.trim());
+      break;
+    }
+
+    // Find first period after 100 chars
+    const dotIndex = remaining.indexOf(".", 100);
+    if (dotIndex === -1) {
+      chunks.push(remaining.trim());
+      break;
+    }
+
+    chunks.push(remaining.slice(0, dotIndex + 1).trim());
+    remaining = remaining.slice(dotIndex + 1);
+  }
+
+  return chunks.filter(Boolean);
 }
 
 export function useSpeechSynthesis() {
@@ -50,7 +68,7 @@ export function useSpeechSynthesis() {
       const controller = new AbortController();
       abortRef.current = controller;
 
-      const sentences = splitSentences(text);
+      const sentences = splitChunks(text);
 
       // Fetch all sentences in parallel
       const fetchPromises = sentences.map((sentence) =>
